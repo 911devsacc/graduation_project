@@ -2,9 +2,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:graduation_project/pages/auth/signup_page.dart';
 import 'package:graduation_project/pages/auth/validators.dart';
-import 'package:graduation_project/pages/in_app/home_page.dart';
+import 'package:graduation_project/pages/main_screen.dart';
+import 'package:graduation_project/provider/user_provider.dart';
 import 'package:graduation_project/widgets/auth_button.dart';
 import 'package:graduation_project/widgets/my_textfield.dart';
+import 'package:provider/provider.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,8 +18,27 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
 
+  final TextEditingController _studentNumberController =
+      TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordControllelr = TextEditingController();
+  bool _passwordVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Auto-generate email from student number
+    _studentNumberController.addListener(() {
+      final number = _studentNumberController.text.trim();
+      _emailController.text = "$number@st.aabu.edu.jo";
+
+      // Keep cursor at end
+      _emailController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _emailController.text.length),
+      );
+    });
+  }
 
   void navigateToSignupPage(BuildContext context) {
     Navigator.pushReplacement(
@@ -28,7 +49,8 @@ class _LoginPageState extends State<LoginPage> {
 
   void _login() async {
   if (_formKey.currentState!.validate()) {
-    final email = _emailController.text.trim();
+    final studentNumber = _studentNumberController.text.trim();
+    final email = "$studentNumber@st.aabu.edu.jo";
     final password = _passwordControllelr.text.trim();
 
     try {
@@ -39,52 +61,52 @@ class _LoginPageState extends State<LoginPage> {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Login attempt
-      UserCredential userCredential =
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Attempt login
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
 
       final user = FirebaseAuth.instance.currentUser;
 
-      // ❌ Check if email is not yet verified
-      if (user != null && !user.emailVerified) {
-        // optional: send again
-        await user.sendEmailVerification();
+      if (user != null) {
+        // Save student number to provider
+        Provider.of<UserProvider>(context, listen: false)
+            .setStudentNumber(studentNumber);
 
-        // Force logout
-        await FirebaseAuth.instance.signOut();
+        // Check email verification
+        if (!user.emailVerified) {
+          await user.sendEmailVerification();
+          await FirebaseAuth.instance.signOut();
 
-        Navigator.of(context).pop(); // close loader
+          Navigator.of(context).pop(); // Close loader
 
-        // Show an alert
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text("Email Not Verified"),
-            content: const Text(
-              "Your email is not verified. We have sent you a new verification email. "
-              "Please verify before logging in.",
-            ),
-            actions: [
-              TextButton(
-                child: const Text("OK"),
-                onPressed: () => Navigator.of(context).pop(),
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text("Email Not Verified"),
+              content: const Text(
+                "Your email is not verified. We sent a new verification email. Please verify before logging in.",
               ),
-            ],
-          ),
-        );
+              actions: [
+                TextButton(
+                  child: const Text("OK"),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          );
 
-        return; // stop login flow
+          return; // Stop login flow
+        }
       }
 
-      // If verified → proceed to home
-      Navigator.of(context).pop(); // close loader
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (ctx)=> const HomePage()));
-
+      // Login success → go to main screen
+      Navigator.of(context).pop(); // Close loader
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (ctx) => const MainScreen()),
+      );
     } on FirebaseAuthException catch (e) {
-      Navigator.of(context).pop(); // close loader
+      Navigator.of(context).pop(); // Close loader
 
       String message = "";
       if (e.code == 'user-not-found') {
@@ -104,7 +126,7 @@ class _LoginPageState extends State<LoginPage> {
             TextButton(
               child: const Text("OK"),
               onPressed: () => Navigator.of(context).pop(),
-            )
+            ),
           ],
         ),
       );
@@ -119,48 +141,81 @@ class _LoginPageState extends State<LoginPage> {
       body: Center(
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(height: 24),
-              Text(
-                "Welcome back!",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 24),
+                const Text(
+                  "Welcome back!",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
 
-              SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              MyTextfield(
-                hintText: 'Email',
-                obscureText: false,
-                validator: Validators.email,
-                keyboardType: TextInputType.emailAddress,
-                controller: _emailController,
-              ),
+                // Student Number Field
+                MyTextfield(
+                  hintText: 'Student Number',
+                  obscureText: false,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Student number is required";
+                    }
+                    if (!RegExp(r'^[0-9]{6,10}$').hasMatch(value)) {
+                      return "Invalid student number";
+                    }
+                    return null;
+                  },
+                  controller: _studentNumberController,
+                  keyboardType: TextInputType.number,
+                ),
 
-              SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-              MyTextfield(
-                hintText: 'Password',
-                obscureText: true,
-                validator: Validators.password,
-                controller: _passwordControllelr,
-              ),
+                // Email Field (read-only, auto-generated)
+                MyTextfield(
+                  hintText: '@st.aabu.edu.jo',
+                  obscureText: false,
+                  controller: _emailController,
+                  readOnly: true,
+                ),
 
-              SizedBox(height: 24),
+                const SizedBox(height: 12),
 
-              AuthButton(text: 'Login', onTap: _login),
+                // Password
+                MyTextfield(
+                  hintText: 'Password',
+                  obscureText: !_passwordVisible,
+                  validator: Validators.password,
+                  controller: _passwordControllelr,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _passwordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _passwordVisible = !_passwordVisible;
+                      });
+                    },
+                  ),
+                ),
 
-              SizedBox(height: 8),
+                const SizedBox(height: 24),
 
-              SwitchAuthPage(
-                text: 'Don\'t have an account? ',
-                onTap: () {
-                  navigateToSignupPage(context);
-                },
-                button: 'Sign up',
-              ),
-            ],
+                AuthButton(text: 'Login', onTap: _login),
+
+                const SizedBox(height: 8),
+
+                SwitchAuthPage(
+                  text: 'Don\'t have an account? ',
+                  onTap: () => navigateToSignupPage(context),
+                  button: 'Sign up',
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -6,11 +6,12 @@ class MyTextfield extends StatelessWidget {
     required this.hintText,
     required this.obscureText,
     required this.controller,
-    required this.validator,
+     this.validator,
     this.keyboardType = TextInputType.text,
     this.suffixIcon,
+    this.readOnly = false,
   });
-
+  final bool readOnly;
   final String hintText;
   final bool obscureText;
   final TextEditingController? controller;
@@ -23,23 +24,27 @@ class MyTextfield extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(left: 32, right: 32, top: 8),
       child: TextFormField(
-        controller: controller,
-        obscureText: obscureText,
-        validator: validator,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          focusedBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.black, width: 2),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          border: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.black),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          hintText: hintText,
-          suffixIcon: suffixIcon,
-        ),
-      ),
+  readOnly: readOnly,
+  enableInteractiveSelection: !readOnly,
+  showCursor: !readOnly,
+  controller: controller,
+  obscureText: obscureText,
+  validator: validator,
+  keyboardType: keyboardType,
+  decoration: InputDecoration(
+    focusedBorder: OutlineInputBorder(
+      borderSide: const BorderSide(color: Colors.black, width: 2),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    border: OutlineInputBorder(
+      borderSide: const BorderSide(color: Colors.black),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    hintText: hintText,
+    suffixIcon: suffixIcon,
+  ),
+),
+
     );
   }
 }

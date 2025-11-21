@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:graduation_project/pages/auth/login_page.dart';
@@ -15,6 +16,8 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
 
+  final TextEditingController _studentNumberController =
+      TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordControllelr = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -22,8 +25,24 @@ class _SignupPageState extends State<SignupPage> {
 
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
- 
- 
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Automatically build the email from student number
+    _studentNumberController.addListener(() {
+      final number = _studentNumberController.text.trim();
+
+      // Auto-generate the full university email
+      _emailController.text = "$number@st.aabu.edu.jo";
+
+      // Keep cursor at the end of the email field when updated
+      _emailController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _emailController.text.length),
+      );
+    });
+  }
 
   void navigateToLoginPage(BuildContext context) {
     Navigator.pushReplacement(
@@ -38,7 +57,7 @@ class _SignupPageState extends State<SignupPage> {
       final password = _passwordControllelr.text.trim();
 
       try {
-        // Show loading dialog
+        // Loading dialog
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -50,13 +69,28 @@ class _SignupPageState extends State<SignupPage> {
         UserCredential userCredential = await FirebaseAuth.instance
             .createUserWithEmailAndPassword(email: email, password: password);
 
-        // OPTIONAL: send email verification
+        // After createUserWithEmailAndPassword
+        User? user = userCredential.user;
+
+        // Save student number as username in Firestore
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'studentNumber': _studentNumberController.text.trim(),
+                'email': _emailController.text.trim(),
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+        }
+
+        // Optional: email verification
         await userCredential.user!.sendEmailVerification();
 
         // Close loader
         Navigator.of(context).pop();
 
-        // Show success message
+        // Success pop-up
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -113,84 +147,108 @@ class _SignupPageState extends State<SignupPage> {
       body: Center(
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(height: 24),
-              Text(
-                "Let's create your account !",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 24),
+                const Text(
+                  "Let's create your account!",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
 
-              SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              MyTextfield(
-                hintText: 'Email',
-                obscureText: false,
-                validator: Validators.email,
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-              ),
-
-              SizedBox(height: 12),
-
-              MyTextfield(
-                hintText: 'Password',
-                obscureText: !_passwordVisible,
-                validator: Validators.password,
-                controller: _passwordControllelr,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _passwordVisible ? Icons.visibility : Icons.visibility_off,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _passwordVisible = !_passwordVisible;
-                    
-                    });
+                // Student Number Field
+                MyTextfield(
+                  hintText: 'Student Number',
+                  obscureText: false,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Student number is required";
+                    }
+                    // Accept 6–10 digit numbers
+                    if (!RegExp(r'^[0-9]{6,10}$').hasMatch(value)) {
+                      return "Invalid student number";
+                    }
+                    return null;
                   },
+                  controller: _studentNumberController,
+                  keyboardType: TextInputType.number,
                 ),
-              ),
 
-              SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-              MyTextfield(
-                hintText: 'Confirm password',
-                obscureText: !_confirmPasswordVisible,
-                validator: (value) => Validators.confirmPassword(
-                  value,
-                  _passwordControllelr.text,
+                // Auto-generated Email (read only)
+                MyTextfield(
+                  hintText: '@st.aabu.edu.jo',
+                  obscureText: false,
+
+                  controller: _emailController,
+                  readOnly: true, // 🔥 important
                 ),
-                controller: _confirmPasswordController,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _confirmPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+
+                const SizedBox(height: 12),
+
+                // Password Field
+                MyTextfield(
+                  hintText: 'Password',
+                  obscureText: !_passwordVisible,
+                  validator: Validators.password,
+                  controller: _passwordControllelr,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _passwordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _passwordVisible = !_passwordVisible;
+                      });
+                    },
                   ),
-                  onPressed: () {
-                    setState(() {
-                      _confirmPasswordVisible = !_confirmPasswordVisible;
-                     
-                    });
-                  },
                 ),
-              ),
 
-              SizedBox(height: 24),
+                const SizedBox(height: 12),
 
-              AuthButton(text: 'Sign up', onTap: _signup),
+                // Confirm Password
+                MyTextfield(
+                  hintText: 'Confirm Password',
+                  obscureText: !_confirmPasswordVisible,
+                  validator: (value) => Validators.confirmPassword(
+                    value,
+                    _passwordControllelr.text,
+                  ),
+                  controller: _confirmPasswordController,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _confirmPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _confirmPasswordVisible = !_confirmPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
 
-              SizedBox(height: 8),
+                const SizedBox(height: 24),
 
-              SwitchAuthPage(
-                text: 'Already have an account? ',
-                onTap: () {
-                  navigateToLoginPage(context);
-                },
-                button: 'Login',
-              ),
-            ],
+                AuthButton(text: 'Sign up', onTap: _signup),
+
+                const SizedBox(height: 8),
+
+                SwitchAuthPage(
+                  text: 'Already have an account? ',
+                  onTap: () => navigateToLoginPage(context),
+                  button: 'Login',
+                ),
+              ],
+            ),
           ),
         ),
       ),
